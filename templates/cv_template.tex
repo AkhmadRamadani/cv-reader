@@ -1,0 +1,133 @@
+\documentclass[11pt,a4paper]{article}
+
+% Page margins
+\usepackage[left=0.75in,right=0.75in,top=0.75in,bottom=0.75in]{geometry}
+
+% Character encoding
+\usepackage[utf8]{inputenc}
+
+% Hyperlinks
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+}
+
+% Custom commands
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}[\titlerule]
+\titleformat{\subsection}{\bfseries}{\thesubsection}{1em}{}
+
+% Remove page numbers
+\pagestyle{empty}
+
+% Custom spacing
+\usepackage{enumitem}
+\setlist{leftmargin=*,noitemsep,topsep=5pt}
+
+% Line spacing
+\usepackage{setspace}
+\setstretch{1.1}
+
+\begin{document}
+
+% Header
+\begin{center}
+    {\LARGE \textbf{Akhmad Ramadani}}\\[5pt]
+    {\large Mobile Developer}\\[8pt]
+    Malang, Indonesia\\
+    \href{tel:08558831704}{08558831704} $|$
+    \href{mailto:akhmdramadani18@gmail.com}{akhmdramadani18@gmail.com} $|$
+    \href{https://linkedin.com/in/aramadani}{linkedin.com/in/aramadani}
+\end{center}
+
+\vspace{10pt}
+
+% Summary
+\section*{Summary}
+Software developer focused on building mobile applications from scratch. Cares about code clarity, fast iteration, and solving real-world problems. Experienced in the full mobile lifecycle, including deployment to the App Store and Google Play, with a strong background in Flutter and foundational experience in native Kotlin and Swift.
+
+% Technical Skills
+\section*{Technical Skills}
+\textbf{Programming Languages:} Dart, Kotlin, Swift, Java, PHP, JavaScript\\
+\textbf{Frameworks \& Platforms:} Flutter, Android Native, iOS Native, Laravel, React Native\\
+\textbf{State Management:} GetX, Provider, BLOC\\
+\textbf{Tools \& DevOps:} Git, CI/CD (Codemagic), REST APIs, Katalon Studio, Firebase
+
+% Experience
+\section*{Experience}
+
+\subsection*{Mobile Application Developer \textbar\ Jobseeker Company}
+\textit{Bali, Indonesia \hfill Aug 2025 -- Present}
+\begin{itemize}
+    \item Develop and maintain Jobseeker.app and Jobseeker.Partners applications using Flutter (GetX, Provider).
+    \item Refactored video implementation to a video preload architecture, enhancing performance and ensuring a smoother scrolling experience.
+    \item Collaborate with backend and design teams to optimize user experience, code structure, and application scalability.
+    \item Implement best practices for state management, performance optimization, and clean architecture.
+    \item Develop and maintain Jobseeker.life applications using Flutter with BLOC state management.
+\end{itemize}
+
+\subsection*{Mobile Application Developer \textbar\ Venturo}
+\textit{Malang, Indonesia \hfill Jul 2022 -- Jul 2025}
+\begin{itemize}
+    \item Led the development and maintenance of Humanis (HRIS app), handling versioning and deployment to the App Store and Google Play.
+    \item Built Promis Engineer (property management system) and established CI/CD workflows using Codemagic.
+    \item Prototyped and explored native development solutions using Swift (iOS) and Kotlin (Android) to support cross-platform strategies.
+    \item Contributed to the Pusaka Kemenag Super App, implementing key features and modules.
+    \item Planned and executed integration tests (Katalon) for Humanis to ensure bug detection and stable releases.
+    \item Guided and mentored mobile development interns, performing code reviews and improving development workflows.
+\end{itemize}
+
+\subsection*{Mobile Application Developer \textbar\ Illiyin Studio}
+\textit{Malang, Indonesia \hfill Aug 2021 -- Apr 2022}
+\begin{itemize}
+    \item Developed the Siginjai Anggota and Siginjai Masyarakat applications using Flutter and Native technologies.
+\end{itemize}
+
+\subsection*{Mobile Application Developer \textbar\ utter.academy}
+\textit{Malang, Indonesia \hfill Dec 2020 -- Jan 2022}
+\begin{itemize}
+    \item Built Utter Academy, a native mobile application for online learning and course management.
+    \item Developed NgajiLagi and BacaTarot using Flutter, applications that connect users with mentors.
+    \item Supervised mobile development interns through code reviews, technical support, and day-to-day mentoring.
+\end{itemize}
+
+% Projects
+\section*{Projects}
+
+\textbf{Humanis (HRIS App):} As lead mobile developer, built core features including presence tracking (face detection), time off, reimbursement, loans, and overtime. Implemented a role-based approval system, time tracking, and reporting modules.
+
+\textbf{Promis Suite:} Developed Promis Engineer and implemented CI/CD workflows (Codemagic). Maintained related apps (Promis Developer, Promis Building Management), ensuring stability and feature consistency.
+
+\textbf{Pusaka (Kemenag Super App):} Contributed to key modules (e.g., Nikkah), implementing OCR functionality to extract data from Indonesian ID cards (KTP) and an archive system to handle incomplete submissions.
+
+\textbf{Pushbike App:} Led full-stack development, building the entire mobile application and the backend API using Laravel to ensure seamless integration.
+
+\textbf{Event App (Thesis Project):} Built an event check-in app integrating liveness detection, auto-capture, and face recognition. Developed a background worker system for continuous, unattended guest reception.
+
+% Education
+\section*{Education}
+
+\textbf{S2 Rekayasa Teknologi Informasi} \hfill 2024 -- Present\\
+Politeknik Negeri Malang, Malang, Indonesia
+
+\textbf{Sarjana Terapan Komputer, D4 Teknik Informatika} \hfill 2020 -- 2024\\
+Politeknik Negeri Malang, Malang, Indonesia
+
+% Certification
+\section*{Certification}
+
+\textbf{Database-Driven Mobile Application Development} \hfill Sep 2024\\
+No. 62019.3512.01.6.0012012.2024, Indonesian Professional Certification Authority
+
+% Volunteering
+\section*{Volunteering}
+
+\textbf{Guest Speaker} \hfill Jul 2022\\
+DSC UIN Maulana Malik Ibrahim Malang -- Session on "How to Become a Mobile Developer."
+
+\textbf{Assessor} \hfill May 2021\\
+Ujian Kompetensi Keahlian (Software Engineering), SMK Negeri 4 Malang.
+
+\end{document}
