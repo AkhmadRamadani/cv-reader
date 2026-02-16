@@ -4,11 +4,8 @@ services:
   cv-reader-api:
     build: .
     container_name: cv-reader-api
-    ports:
-      - "8000:8000"
-    environment:
-      - PYTHONUNBUFFERED=1
-      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - ./.env
     volumes:
       - ./logs:/app/logs
     depends_on:
