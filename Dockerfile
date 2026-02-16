@@ -16,7 +16,5 @@ RUN pip install https://github.com/explosion/spacy-models/releases/download/en_c
 
 COPY . .
 
-EXPOSE 8000
-
 # Use Gunicorn with Uvicorn workers for production
 CMD ["gunicorn", "app.main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
