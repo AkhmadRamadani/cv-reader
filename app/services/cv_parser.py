@@ -63,9 +63,9 @@ class ImprovedCVReader:
                 return None
 
             # Histogram of x-coordinates (presence of text)
-            # We check roughly the middle 50% of the page width
-            scan_start = width * 0.3
-            scan_end = width * 0.7
+            # Widen the scan range to catch off-center splits
+            scan_start = width * 0.1
+            scan_end = width * 0.9
 
             # Create a bucket array for the page width
             buckets = [0] * int(width + 1)
@@ -97,8 +97,8 @@ class ImprovedCVReader:
                 best_gap_len = current_gap
                 best_gap_start = current_gap_start
 
-            # If gap is significant (e.g., > 15 points)
-            if best_gap_len > 15:
+            # If gap is significant (e.g., > 5 points to catch tight layouts)
+            if best_gap_len > 5:
                 return best_gap_start + (best_gap_len / 2)
         except Exception as e:
             print(f"Error detecting columns: {e}")
@@ -482,14 +482,24 @@ class ImprovedCVReader:
                     location = ', '.join(parts[1:]) if len(parts) > 1 else ""
 
                     # Logic to swap Degree and Institution based on keywords
-                    inst_keywords = ['university', 'universitas', 'institute', 'college', 'school', 'academy', 'politeknik', 'politech', 'campus', 'smk']
-                    degree_keywords = ['bachelor', 'master', 'diploma', 'degree', 'phd', 'doctor', 'associate', 'sarjana', 'magister', 'teknik', 'computer', 'science', 'informatics', 'information', 'mca', 'b.sc', 'm.sc', 'b.a', 'm.a', 'd4', 'd3', 'siswa']
+                    # Expanded keywords to include more variants
+                    inst_keywords = [
+                        'university', 'universitas', 'institute', 'institut', 'college', 'school', 'academy',
+                        'politeknik', 'politech', 'campus', 'smk', 'sma', 'high school', 'universiti'
+                    ]
+                    degree_keywords = [
+                        'bachelor', 'master', 'diploma', 'degree', 'phd', 'doctor', 'associate',
+                        'sarjana', 'magister', 'teknik', 'computer', 'science', 'informatics',
+                        'information', 'mca', 'b.sc', 'm.sc', 'b.a', 'm.a', 'd4', 'd3', 'siswa',
+                        'major', 'minor', 'engineering'
+                    ]
 
                     deg_lower = degree.lower()
                     inst_lower = institution.lower()
 
                     has_inst_in_deg = any(k in deg_lower for k in inst_keywords)
                     has_deg_in_deg = any(k in deg_lower for k in degree_keywords)
+
                     has_deg_in_inst = any(k in inst_lower for k in degree_keywords)
                     has_inst_in_inst = any(k in inst_lower for k in inst_keywords)
 
@@ -498,6 +508,9 @@ class ImprovedCVReader:
                          degree, institution = institution, degree
                     # Or if Degree var looks like Institution and DOES NOT look like Degree
                     elif has_inst_in_deg and not has_deg_in_deg:
+                         degree, institution = institution, degree
+                    # Or if Institution var looks like Degree and DOES NOT look like Institution
+                    elif has_deg_in_inst and not has_inst_in_inst:
                          degree, institution = institution, degree
 
                     education_list.append(Education(
