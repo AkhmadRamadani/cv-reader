@@ -5,6 +5,7 @@ import os
 from typing import Dict, List, Optional
 from dataclasses import asdict
 from app.services.cv_parser import cv_reader
+from app.services.ml_cv_parser import ml_cv_parser
 from app.core.nlp import get_nlp
 from app.core.limiter import limiter
 from app.utils import dataclass_to_dict
@@ -19,7 +20,8 @@ async def root():
         "message": "CV Reader API",
         "version": "1.0.0",
         "endpoints": {
-            "POST /parse-cv": "Upload and parse a CV/Resume PDF",
+            "POST /parse-cv": "Upload and parse a CV/Resume PDF (Regex-based)",
+            "POST /parse-cv-ml": "Upload and parse a CV/Resume PDF (BERT-based)",
             "GET /health": "Check API health status"
         }
     }
@@ -68,6 +70,48 @@ async def parse_cv(request: Request, file: UploadFile = File(...)):
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error parsing CV: {str(e)}")
+
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+@router.post("/parse-cv-ml")
+@limiter.limit("5/minute")
+async def parse_cv_ml(request: Request, file: UploadFile = File(...)):
+    """
+    Parse a CV/Resume PDF using ML (BERT) model
+    Rate limit: 5 requests per minute
+    """
+    # Check file extension
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    # Create temporary file to save uploaded PDF
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+        temp_path = temp_file.name
+
+        try:
+            # Read and save uploaded file
+            content = await file.read()
+            temp_file.write(content)
+            temp_file.flush()
+
+            # Parse CV with ML parser
+            cv_data = ml_cv_parser.parse_cv(temp_path)
+
+            # Convert to dictionary
+            result = dataclass_to_dict(cv_data)
+
+            return JSONResponse(content={
+                "success": True,
+                "filename": file.filename,
+                "data": result,
+                "parser": "ml_bert"
+            })
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error parsing CV with ML: {str(e)}")
 
         finally:
             # Clean up temporary file
