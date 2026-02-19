@@ -49,15 +49,100 @@ class ImprovedCVReader:
 
         return CVData(**d)
 
+    def _detect_column_split(self, page, min_gap_width_percent=0.05) -> Optional[float]:
+        """Detect if page has two columns and return the split x-coordinate"""
+        words = page.extract_words()
+        if not words:
+            return None
+
+        width = float(page.width)
+        min_gap = width * min_gap_width_percent
+
+        # Filter words to ignore potential header/footer that might span columns
+        y_min = min(w['top'] for w in words)
+        y_max = max(w['bottom'] for w in words)
+        content_height = y_max - y_min
+
+        # Use words in the middle 80% of content height
+        relevant_words = [
+            w for w in words
+            if w['top'] > y_min + 0.1 * content_height
+            and w['bottom'] < y_max - 0.1 * content_height
+        ]
+
+        if not relevant_words:
+            relevant_words = words
+
+        # Project words onto x-axis
+        intervals = []
+        for w in relevant_words:
+            intervals.append((float(w['x0']), float(w['x1'])))
+
+        intervals.sort(key=lambda x: x[0])
+
+        # Merge overlapping intervals
+        if not intervals:
+            return None
+
+        merged = []
+        curr_start, curr_end = intervals[0]
+
+        for next_start, next_end in intervals[1:]:
+            if next_start < curr_end:  # Overlap
+                curr_end = max(curr_end, next_end)
+            else:
+                merged.append((curr_start, curr_end))
+                curr_start, curr_end = next_start, next_end
+        merged.append((curr_start, curr_end))
+
+        # Find largest central gap
+        best_gap = None
+        max_gap_width = 0
+
+        for i in range(len(merged) - 1):
+            gap_start = merged[i][1]
+            gap_end = merged[i+1][0]
+            gap_width = gap_end - gap_start
+            gap_center = (gap_start + gap_end) / 2
+
+            # Check if gap is central (between 30% and 70% of page width)
+            # and significant enough
+            if gap_width > min_gap and 0.3 * width < gap_center < 0.7 * width:
+                if gap_width > max_gap_width:
+                    max_gap_width = gap_width
+                    best_gap = gap_center
+
+        return best_gap
+
     def extract_text_from_pdf(self, pdf_path: str) -> str:
-        """Extract text from PDF file"""
+        """Extract text from PDF file with column support"""
         text = ""
         try:
             with pdfplumber.open(pdf_path) as pdf:
                 for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + "\n"
+                    split_x = self._detect_column_split(page)
+
+                    if split_x:
+                        # Split page into left and right columns
+                        try:
+                            left_box = (0, 0, split_x, float(page.height))
+                            right_box = (split_x, 0, float(page.width), float(page.height))
+
+                            left_col = page.crop(left_box)
+                            right_col = page.crop(right_box)
+
+                            text_left = left_col.extract_text() or ""
+                            text_right = right_col.extract_text() or ""
+                            text += text_left + "\n" + text_right + "\n"
+                        except Exception as e:
+                            print(f"Error splitting page: {e}, falling back to standard extraction")
+                            page_text = page.extract_text()
+                            if page_text:
+                                text += page_text + "\n"
+                    else:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text += page_text + "\n"
         except Exception as e:
             print(f"Error reading PDF: {e}")
         return text
