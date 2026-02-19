@@ -6,3 +6,5 @@ spacy==3.7.2
 redis==5.0.1
 slowapi==0.1.9
 gunicorn==21.2.0
+pymupdf
+pdfminer.six

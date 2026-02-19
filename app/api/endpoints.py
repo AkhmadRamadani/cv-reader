@@ -2,9 +2,11 @@ from fastapi import APIRouter, File, UploadFile, HTTPException, Request
 from fastapi.responses import JSONResponse
 import tempfile
 import os
+import asyncio
 from typing import Dict, List, Optional
 from dataclasses import asdict
 from app.services.cv_parser import cv_reader
+from app.services.simple_cv_parser import extract_resume
 from app.core.nlp import get_nlp
 from app.core.limiter import limiter
 from app.utils import dataclass_to_dict
@@ -20,6 +22,7 @@ async def root():
         "version": "1.0.0",
         "endpoints": {
             "POST /parse-cv": "Upload and parse a CV/Resume PDF",
+            "POST /parse-cv-simple": "Upload and parse a CV/Resume PDF using regex heuristics",
             "GET /health": "Check API health status"
         }
     }
@@ -59,6 +62,46 @@ async def parse_cv(request: Request, file: UploadFile = File(...)):
 
             # Convert to dictionary
             result = dataclass_to_dict(cv_data)
+
+            return JSONResponse(content={
+                "success": True,
+                "filename": file.filename,
+                "data": result
+            })
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error parsing CV: {str(e)}")
+
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+
+@router.post("/parse-cv-simple")
+@limiter.limit("5/minute")
+async def parse_cv_simple(request: Request, file: UploadFile = File(...)):
+    """
+    Parse a CV/Resume PDF using simple regex-based heuristics.
+    Rate limit: 5 requests per minute
+    """
+    # Check file extension
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    # Create temporary file to save uploaded PDF
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+        temp_path = temp_file.name
+
+        try:
+            # Read and save uploaded file
+            content = await file.read()
+            temp_file.write(content)
+            temp_file.flush()
+
+            # Parse CV using simple parser
+            # Run blocking extraction in a separate thread
+            result = await asyncio.to_thread(extract_resume, temp_path)
 
             return JSONResponse(content={
                 "success": True,
