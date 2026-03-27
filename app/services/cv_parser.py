@@ -49,15 +49,86 @@ class ImprovedCVReader:
 
         return CVData(**d)
 
+    def detect_column_split(self, page) -> Optional[float]:
+        """
+        Detects if a page has two columns by looking for a vertical whitespace gap.
+        Returns the x-coordinate of the split if found, otherwise None.
+        """
+        try:
+            width = page.width
+
+            # Get all characters
+            chars = page.chars
+            if not chars:
+                return None
+
+            # Histogram of x-coordinates (presence of text)
+            # Widen the scan range to catch off-center splits
+            scan_start = width * 0.1
+            scan_end = width * 0.9
+
+            # Create a bucket array for the page width
+            buckets = [0] * int(width + 1)
+            for char in chars:
+                x0 = int(char['x0'])
+                x1 = int(char['x1'])
+                for x in range(x0, x1 + 1):
+                    if 0 <= x < len(buckets):
+                        buckets[x] = 1
+
+            # Find longest sequence of 0s in the scan range
+            current_gap = 0
+            best_gap_start = 0
+            best_gap_len = 0
+            current_gap_start = 0
+
+            for x in range(int(scan_start), int(scan_end)):
+                if buckets[x] == 0:
+                    if current_gap == 0:
+                        current_gap_start = x
+                    current_gap += 1
+                else:
+                    if current_gap > best_gap_len:
+                        best_gap_len = current_gap
+                        best_gap_start = current_gap_start
+                    current_gap = 0
+
+            if current_gap > best_gap_len:
+                best_gap_len = current_gap
+                best_gap_start = current_gap_start
+
+            # If gap is significant (e.g., > 5 points to catch tight layouts)
+            if best_gap_len > 5:
+                return best_gap_start + (best_gap_len / 2)
+        except Exception as e:
+            print(f"Error detecting columns: {e}")
+
+        return None
+
     def extract_text_from_pdf(self, pdf_path: str) -> str:
-        """Extract text from PDF file"""
+        """Extract text from PDF file with layout awareness"""
         text = ""
         try:
             with pdfplumber.open(pdf_path) as pdf:
                 for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + "\n"
+                    split_x = self.detect_column_split(page)
+
+                    if split_x:
+                        # Left column
+                        left = page.crop((0, 0, split_x, page.height))
+                        left_text = left.extract_text()
+                        if left_text:
+                            text += left_text + "\n"
+
+                        # Right column
+                        right = page.crop((split_x, 0, page.width, page.height))
+                        right_text = right.extract_text()
+                        if right_text:
+                            text += right_text + "\n"
+                    else:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text += page_text + "\n"
         except Exception as e:
             print(f"Error reading PDF: {e}")
         return text
@@ -172,6 +243,10 @@ class ImprovedCVReader:
         skills = {}
         lines = text.split('\n')
 
+        # Default category for list-style skills
+        if "General" not in skills:
+             skills["General"] = []
+
         for line in lines:
             line = line.strip()
             if not line:
@@ -188,6 +263,15 @@ class ImprovedCVReader:
 
                 if items:
                     skills[category] = items
+            else:
+                # Treat line as skills list (comma separated or single item)
+                items = [item.strip() for item in line.split(',') if item.strip()]
+                if items:
+                    skills["General"].extend(items)
+
+        # Remove General if empty
+        if not skills["General"]:
+            del skills["General"]
 
         return skills
 
@@ -200,47 +284,131 @@ class ImprovedCVReader:
         while i < len(lines):
             line = lines[i].strip()
 
-            # Look for pattern: "Position | Company"
-            if '|' in line:
-                parts = line.split('|')
-                position = parts[0].strip()
-                company = parts[1].strip() if len(parts) > 1 else ""
-
-                # Look for location and dates in next line
-                location = ""
-                start_date = ""
-                end_date = ""
-
+            # Skip empty lines
+            if not line:
                 i += 1
-                if i < len(lines):
-                    next_line = lines[i].strip()
+                continue
 
-                    # Extract dates
-                    date_match = re.search(r'(\w+\s+\d{4})\s*[–—-]\s*(\w+\s+\d{4}|Present|Current)', next_line)
-                    if date_match:
-                        start_date = date_match.group(1)
-                        end_date = date_match.group(2)
+            # Check if this line or next lines contain a date pattern
+            # Pattern: Date - Date
+            # We look for the date line to identify the END of the header block.
 
-                        # Location is before the dates
-                        location = next_line[:date_match.start()].strip()
-                        location = location.rstrip(',').strip()
+            date_line_idx = -1
+            start_date, end_date = "", ""
 
-                # Collect responsibilities
+            # Look ahead up to 3 lines to find the date line
+            for offset in range(3):
+                if i + offset >= len(lines): break
+                check_line = lines[i + offset].strip()
+
+                # Regex for date range: "Month Year - Month Year", "Year - Year", "Year - Present"
+                date_match = re.search(r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4})\s*[–—-]\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4}|Present|Current)', check_line, re.IGNORECASE)
+
+                if date_match:
+                    date_line_idx = i + offset
+                    start_date = date_match.group(1)
+                    end_date = date_match.group(2)
+                    break
+
+            if date_line_idx != -1:
+                # Found a job block
+                # Lines from i to date_line_idx-1 are likely Company and Position
+                header_lines = lines[i : date_line_idx]
+
+                company = ""
+                position = ""
+
+                # Analyze header lines
+                if not header_lines:
+                    # Date line itself might contain info
+                    line_content = lines[date_line_idx]
+                    # Remove the date part
+                    line_content = re.sub(r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4})\s*[–—-]\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4}|Present|Current)', '', line_content, flags=re.IGNORECASE).strip()
+
+                    if '|' in line_content:
+                        parts = line_content.split('|')
+                        position = parts[0].strip()
+                        company = parts[1].strip()
+                    elif ' at ' in line_content:
+                         parts = line_content.split(' at ')
+                         position = parts[0].strip()
+                         company = parts[1].strip()
+                    else:
+                        company = line_content
+
+                elif len(header_lines) == 1:
+                    l1 = header_lines[0].strip()
+                    if '|' in l1:
+                        parts = l1.split('|')
+                        position = parts[0].strip()
+                        company = parts[1].strip()
+                    elif ' at ' in l1:
+                        parts = l1.split(' at ')
+                        position = parts[0].strip()
+                        company = parts[1].strip()
+                    else:
+                        # Ambiguous. Check for position keywords.
+                        if any(k in l1.lower() for k in ['developer', 'engineer', 'manager', 'lead', 'head', 'intern', 'specialist', 'consultant', 'director', 'officer', 'analyst']):
+                            position = l1
+                        else:
+                            company = l1
+
+                elif len(header_lines) >= 2:
+                    # Use first two lines
+                    l1 = header_lines[0].strip()
+                    l2 = header_lines[1].strip()
+
+                    # Distinguish using keywords
+                    pos_keywords = ['developer', 'engineer', 'manager', 'lead', 'head', 'intern', 'specialist', 'consultant', 'director', 'officer', 'analyst']
+
+                    l1_is_pos = any(k in l1.lower() for k in pos_keywords)
+                    l2_is_pos = any(k in l2.lower() for k in pos_keywords)
+
+                    if l1_is_pos and not l2_is_pos:
+                        position = l1
+                        company = l2
+                    elif l2_is_pos and not l1_is_pos:
+                        company = l1
+                        position = l2
+                    else:
+                        # Fallback: Company then Position is standard
+                        company = l1
+                        position = l2
+
+                # Extract Location from Date Line (text before date)
+                date_line_text = lines[date_line_idx]
+                location_text = re.sub(r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4})\s*[–—-]\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4}|Present|Current)', '', date_line_text, flags=re.IGNORECASE).strip()
+                location = location_text.strip(" ,·•|")
+
+                # Responsibilities
                 responsibilities = []
-                i += 1
-                while i < len(lines):
-                    resp_line = lines[i].strip()
+                j = date_line_idx + 1
+                while j < len(lines):
+                    line_j = lines[j].strip()
+                    if not line_j:
+                        j += 1
+                        continue
 
-                    # Stop if we hit next job (contains |) or empty line after content
-                    if '|' in resp_line or (not resp_line and responsibilities):
+                    # Stop if we see a date pattern in upcoming lines (start of next job)
+                    is_next_job = False
+                    for off in range(3):
+                        if j + off < len(lines):
+                            if re.search(r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4})\s*[–—-]\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4}|Present|Current)', lines[j+off], re.IGNORECASE):
+                                if off <= 2: # Allow up to 2 header lines before date
+                                    is_next_job = True
+                                    break
+                    if is_next_job:
                         break
 
-                    if resp_line and resp_line.startswith('•'):
-                        responsibilities.append(resp_line[1:].strip())
-                    elif resp_line:
-                        responsibilities.append(resp_line)
+                    # Clean bullet points
+                    clean_line = line_j
+                    if clean_line.startswith('•') or clean_line.startswith('-'):
+                        clean_line = clean_line[1:].strip()
 
-                    i += 1
+                    if clean_line:
+                        responsibilities.append(clean_line)
+
+                    j += 1
 
                 experiences.append(WorkExperience(
                     start_date=start_date,
@@ -250,9 +418,10 @@ class ImprovedCVReader:
                     location=location,
                     responsibilities=responsibilities
                 ))
-                continue
 
-            i += 1
+                i = j # Move main index
+            else:
+                i += 1 # Continue searching
 
         return experiences
 
@@ -284,7 +453,8 @@ class ImprovedCVReader:
                     next_line = lines[i].strip()
 
                     # Look for date range pattern at the end
-                    date_match = re.search(r'(\d{4})\s*[–—-]\s*(\d{4}|Present)', line + ' ' + next_line)
+                    # Updated regex to support month names
+                    date_match = re.search(r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4})\s*[–—-]\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4}|Present)', line + ' ' + next_line, re.IGNORECASE)
 
                     if date_match:
                         start_date = date_match.group(1)
@@ -304,12 +474,44 @@ class ImprovedCVReader:
 
                     # Parse institution and location from next_line
                     # Remove dates from the line
-                    institution_location = re.sub(r'\d{4}\s*[–—-]\s*(?:\d{4}|Present)', '', next_line).strip()
+                    institution_location = re.sub(r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4})\s*[–—-]\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4}|Present)', '', next_line, flags=re.IGNORECASE).strip()
 
                     # Split by comma
                     parts = [p.strip() for p in institution_location.split(',')]
                     institution = parts[0] if len(parts) > 0 else ""
                     location = ', '.join(parts[1:]) if len(parts) > 1 else ""
+
+                    # Logic to swap Degree and Institution based on keywords
+                    # Expanded keywords to include more variants
+                    inst_keywords = [
+                        'university', 'universitas', 'institute', 'institut', 'college', 'school', 'academy',
+                        'politeknik', 'politech', 'campus', 'smk', 'sma', 'high school', 'universiti'
+                    ]
+                    degree_keywords = [
+                        'bachelor', 'master', 'diploma', 'degree', 'phd', 'doctor', 'associate',
+                        'sarjana', 'magister', 'teknik', 'computer', 'science', 'informatics',
+                        'information', 'mca', 'b.sc', 'm.sc', 'b.a', 'm.a', 'd4', 'd3', 'siswa',
+                        'major', 'minor', 'engineering'
+                    ]
+
+                    deg_lower = degree.lower()
+                    inst_lower = institution.lower()
+
+                    has_inst_in_deg = any(k in deg_lower for k in inst_keywords)
+                    has_deg_in_deg = any(k in deg_lower for k in degree_keywords)
+
+                    has_deg_in_inst = any(k in inst_lower for k in degree_keywords)
+                    has_inst_in_inst = any(k in inst_lower for k in inst_keywords)
+
+                    # Swap if Degree var looks like Institution AND Institution var looks like Degree
+                    if has_inst_in_deg and has_deg_in_inst:
+                         degree, institution = institution, degree
+                    # Or if Degree var looks like Institution and DOES NOT look like Degree
+                    elif has_inst_in_deg and not has_deg_in_deg:
+                         degree, institution = institution, degree
+                    # Or if Institution var looks like Degree and DOES NOT look like Institution
+                    elif has_deg_in_inst and not has_inst_in_inst:
+                         degree, institution = institution, degree
 
                     education_list.append(Education(
                         start_date=start_date,

@@ -5,6 +5,7 @@ import os
 from typing import Dict, List, Optional
 from dataclasses import asdict
 from app.services.cv_parser import cv_reader
+from app.services.ml_cv_parser import ml_parser
 from app.core.nlp import get_nlp
 from app.core.limiter import limiter
 from app.utils import dataclass_to_dict
@@ -68,6 +69,51 @@ async def parse_cv(request: Request, file: UploadFile = File(...)):
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error parsing CV: {str(e)}")
+
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+@router.post("/parse-cv-ml")
+@limiter.limit("5/minute")
+async def parse_cv_ml(request: Request, file: UploadFile = File(...)):
+    """
+    Parse a CV/Resume PDF using BERT NER model (yashpwr/resume-ner-bert-v2)
+    Rate limit: 5 requests per minute
+    """
+    # Check file extension
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    # Create temporary file to save uploaded PDF
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+        temp_path = temp_file.name
+
+        try:
+            # Read and save uploaded file
+            content = await file.read()
+            temp_file.write(content)
+            temp_file.flush()
+
+            # Extract raw text using the layout-aware extractor
+            raw_text = cv_reader.extract_text_from_pdf(temp_path)
+
+            if not raw_text:
+                raise HTTPException(status_code=400, detail="Could not extract text from PDF")
+
+            # Parse CV using ML model
+            parsed_data = ml_parser.parse(raw_text)
+
+            return JSONResponse(content={
+                "success": True,
+                "filename": file.filename,
+                "model": "resume-ner-bert-v2",
+                "data": parsed_data
+            })
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error parsing CV with ML: {str(e)}")
 
         finally:
             # Clean up temporary file
