@@ -4,8 +4,10 @@ services:
   cv-reader-api:
     build: .
     container_name: cv-reader-api
+    ports:
+      - "8000:8000"
     env_file:
-      - ./.env
+      - .env
     volumes:
       - ./logs:/app/logs
     depends_on:
